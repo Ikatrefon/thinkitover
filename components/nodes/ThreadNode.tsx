@@ -1,18 +1,19 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Handle, Position, NodeProps } from '@xyflow/react'
+import { Handle, Position, NodeProps, NodeResizer } from '@xyflow/react'
 
 interface Message { id: string; role: string; content: string }
 interface ThreadData {
   threadId: string
   title: string
   messages: Message[]
+  isDark: boolean
   onDelete: (id: string) => void
   onTitleChange: (id: string, title: string) => void
 }
 
-export default function ThreadNode({ id, data }: NodeProps) {
+export default function ThreadNode({ id, data, selected }: NodeProps) {
   const d = data as unknown as ThreadData
   const [messages, setMessages] = useState<Message[]>(d.messages || [])
   const [input, setInput] = useState('')
@@ -20,7 +21,6 @@ export default function ThreadNode({ id, data }: NodeProps) {
   const [editingTitle, setEditingTitle] = useState(false)
   const [title, setTitle] = useState(d.title || 'New chat')
   const bottomRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -84,45 +84,68 @@ export default function ThreadNode({ id, data }: NodeProps) {
     })
   }
 
+  const dark = d.isDark !== false
+  const bg = dark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+  const headerBg = dark ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'
+  const textMain = dark ? 'text-white' : 'text-gray-900'
+  const textMuted = dark ? 'text-gray-400' : 'text-gray-500'
+  const inputBg = dark ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'
+  const userColor = dark ? 'text-blue-300' : 'text-blue-600'
+  const assistantColor = dark ? 'text-gray-200' : 'text-gray-800'
+
   return (
-    <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-xl flex flex-col" style={{ width: 320, height: 420 }}>
+    <div className={`${bg} border rounded-xl shadow-xl flex flex-col w-full h-full min-w-[260px] min-h-[320px]`}>
+      <NodeResizer
+        minWidth={260}
+        minHeight={320}
+        isVisible={selected}
+        lineClassName={dark ? '!border-blue-500' : '!border-blue-400'}
+        handleClassName="!bg-blue-500 !border-blue-300"
+      />
+
       <Handle type="target" position={Position.Left} className="!bg-blue-500" />
       <Handle type="source" position={Position.Right} className="!bg-blue-500" />
 
-      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700 flex-shrink-0">
-        {editingTitle ? (
-          <input
-            autoFocus
-            defaultValue={title}
-            onBlur={e => saveTitle(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && saveTitle((e.target as HTMLInputElement).value)}
-            className="bg-transparent text-sm text-white font-medium outline-none flex-1 min-w-0"
-          />
-        ) : (
-          <span
-            className="text-sm text-white font-medium truncate cursor-pointer hover:text-blue-400 flex-1 min-w-0"
-            onDoubleClick={() => setEditingTitle(true)}
-            title="Double-click to rename"
-          >
-            {title}
-          </span>
-        )}
+      {/* DRAG HANDLE — only this bar moves the node */}
+      <div className={`drag-handle flex items-center justify-between px-3 py-2 border-b ${headerBg} rounded-t-xl flex-shrink-0 cursor-grab active:cursor-grabbing select-none`}>
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <span className={`text-xs ${textMuted} flex-shrink-0`}>⠿</span>
+          {editingTitle ? (
+            <input
+              autoFocus
+              defaultValue={title}
+              onBlur={e => saveTitle(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && saveTitle((e.target as HTMLInputElement).value)}
+              className={`bg-transparent text-sm ${textMain} font-medium outline-none flex-1 min-w-0`}
+              onClick={e => e.stopPropagation()}
+            />
+          ) : (
+            <span
+              className={`text-sm ${textMain} font-medium truncate cursor-pointer hover:text-blue-400 flex-1 min-w-0`}
+              onDoubleClick={e => { e.stopPropagation(); setEditingTitle(true) }}
+              title="Double-click to rename"
+            >
+              {title}
+            </span>
+          )}
+        </div>
         <button
           onClick={() => d.onDelete(id)}
-          className="text-gray-500 hover:text-red-400 transition-colors ml-2 text-base leading-none flex-shrink-0"
+          className={`${textMuted} hover:text-red-400 transition-colors ml-2 text-base leading-none flex-shrink-0`}
         >
           ×
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
+      {/* Messages — text is selectable */}
+      <div className="nodrag nopan flex-1 overflow-y-auto p-3 space-y-2 min-h-0 cursor-text">
         {messages.length === 0 && (
-          <p className="text-gray-600 text-xs text-center pt-8">Ask anything…</p>
+          <p className={`${textMuted} text-xs text-center pt-8`}>Ask anything…</p>
         )}
         {messages.map(m => (
-          <div key={m.id} className={`text-xs leading-relaxed ${m.role === 'user' ? 'text-blue-300' : 'text-gray-200'}`}>
-            <span className="text-gray-600 mr-1">{m.role === 'user' ? 'You' : 'Claude'}:</span>
-            <span className="whitespace-pre-wrap">{m.content}</span>
+          <div key={m.id} className={`text-xs leading-relaxed ${m.role === 'user' ? userColor : assistantColor}`}>
+            <span className={`${textMuted} mr-1`}>{m.role === 'user' ? 'You' : 'Claude'}:</span>
+            <span className="whitespace-pre-wrap select-text">{m.content}</span>
             {m.role === 'assistant' && m.content === '' && streaming && (
               <span className="animate-pulse text-gray-500">▋</span>
             )}
@@ -131,20 +154,20 @@ export default function ThreadNode({ id, data }: NodeProps) {
         <div ref={bottomRef} />
       </div>
 
-      <div className="border-t border-gray-700 p-2 flex gap-2 flex-shrink-0">
+      {/* Input */}
+      <div className={`border-t ${dark ? 'border-gray-700' : 'border-gray-200'} p-2 flex gap-2 flex-shrink-0`}>
         <textarea
-          ref={textareaRef}
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Message… (Enter to send)"
           rows={2}
-          className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white resize-none focus:outline-none focus:border-blue-500 nodrag"
+          className={`flex-1 ${inputBg} border rounded-lg px-2 py-1.5 text-xs resize-none focus:outline-none focus:border-blue-500 nodrag nopan`}
         />
         <button
           onClick={sendMessage}
           disabled={streaming || !input.trim()}
-          className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg px-2 text-xs font-medium transition-colors self-end py-1.5"
+          className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg px-2 text-xs font-medium transition-colors self-end py-1.5 nodrag"
         >
           ↑
         </button>

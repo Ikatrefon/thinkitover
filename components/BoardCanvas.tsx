@@ -27,37 +27,62 @@ interface BoardData { id: string; threads: Thread[]; notes: NoteType[] }
 
 const SAVE_DELAY = 1000
 
-export default function BoardCanvas({ board }: { board: BoardData }) {
+export default function BoardCanvas({ board, userName }: { board: BoardData; userName: string }) {
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true
+    const saved = localStorage.getItem('thinkitover-theme')
+    return saved === null ? true : saved === 'dark'
+  })
 
-  function buildNodes(threads: Thread[], notes: NoteType[], handlers: {
-    onDeleteThread: (nodeId: string) => void
-    onTitleChange: (nodeId: string, title: string) => void
-    onDeleteNote: (nodeId: string) => void
-  }): Node[] {
-    const threadNodes: Node[] = threads.map(t => ({
-      id: `t-${t.id}`,
-      type: 'thread',
-      position: { x: t.posX, y: t.posY },
-      data: {
-        threadId: t.id,
-        title: t.title,
-        messages: t.messages,
-        onDelete: handlers.onDeleteThread,
-        onTitleChange: handlers.onTitleChange,
-      },
-    }))
-    const noteNodes: Node[] = notes.map(n => ({
-      id: `n-${n.id}`,
-      type: 'note',
-      position: { x: n.posX, y: n.posY },
-      data: {
-        noteId: n.id,
-        content: n.content,
-        onDelete: handlers.onDeleteNote,
-      },
-    }))
-    return [...threadNodes, ...noteNodes]
+  function toggleTheme() {
+    setIsDark(prev => {
+      const next = !prev
+      localStorage.setItem('thinkitover-theme', next ? 'dark' : 'light')
+      return next
+    })
+  }
+
+  function buildNodes(
+    threads: Thread[],
+    notes: NoteType[],
+    dark: boolean,
+    handlers: {
+      onDeleteThread: (nodeId: string) => void
+      onTitleChange: (nodeId: string, title: string) => void
+      onDeleteNote: (nodeId: string) => void
+    }
+  ): Node[] {
+    return [
+      ...threads.map(t => ({
+        id: `t-${t.id}`,
+        type: 'thread' as const,
+        position: { x: t.posX, y: t.posY },
+        dragHandle: '.drag-handle',
+        style: { width: 320, height: 420 },
+        data: {
+          threadId: t.id,
+          title: t.title,
+          messages: t.messages,
+          isDark: dark,
+          onDelete: handlers.onDeleteThread,
+          onTitleChange: handlers.onTitleChange,
+        },
+      })),
+      ...notes.map(n => ({
+        id: `n-${n.id}`,
+        type: 'note' as const,
+        position: { x: n.posX, y: n.posY },
+        dragHandle: '.drag-handle',
+        style: { width: 220, height: 160 },
+        data: {
+          noteId: n.id,
+          content: n.content,
+          isDark: dark,
+          onDelete: handlers.onDeleteNote,
+        },
+      })),
+    ]
   }
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
@@ -82,8 +107,13 @@ export default function BoardCanvas({ board }: { board: BoardData }) {
   }, [setNodes, setEdges])
 
   useEffect(() => {
-    setNodes(buildNodes(board.threads, board.notes, { onDeleteThread, onTitleChange, onDeleteNote }))
+    setNodes(buildNodes(board.threads, board.notes, isDark, { onDeleteThread, onTitleChange, onDeleteNote }))
   }, [board]) // eslint-disable-line
+
+  // Update isDark in all existing nodes when theme changes
+  useEffect(() => {
+    setNodes(prev => prev.map(n => ({ ...n, data: { ...n.data, isDark } })))
+  }, [isDark]) // eslint-disable-line
 
   const handleNodesChange = useCallback((changes: NodeChange[]) => {
     onNodesChange(changes)
@@ -111,8 +141,13 @@ export default function BoardCanvas({ board }: { board: BoardData }) {
   }, [onNodesChange])
 
   const onConnect = useCallback((connection: Connection) => {
-    setEdges(prev => addEdge({ ...connection, animated: false, style: { stroke: '#4b5563' } }, prev))
-  }, [setEdges])
+    setEdges(prev => addEdge({
+      ...connection,
+      animated: false,
+      style: { stroke: isDark ? '#4b5563' : '#9ca3af', strokeWidth: 2 },
+      markerEnd: { type: 'arrowclosed' as const, color: isDark ? '#4b5563' : '#9ca3af' },
+    }, prev))
+  }, [setEdges, isDark])
 
   async function addThread(e: React.MouseEvent) {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
@@ -130,10 +165,13 @@ export default function BoardCanvas({ board }: { board: BoardData }) {
       id: `t-${thread.id}`,
       type: 'thread',
       position: { x: posX, y: posY },
+      dragHandle: '.drag-handle',
+      style: { width: 320, height: 420 },
       data: {
         threadId: thread.id,
         title: thread.title,
         messages: [],
+        isDark,
         onDelete: onDeleteThread,
         onTitleChange: onTitleChange,
       },
@@ -155,44 +193,86 @@ export default function BoardCanvas({ board }: { board: BoardData }) {
       id: `n-${note.id}`,
       type: 'note',
       position: { x: posX, y: posY },
-      data: { noteId: note.id, content: '', onDelete: onDeleteNote },
+      dragHandle: '.drag-handle',
+      style: { width: 220, height: 160 },
+      data: { noteId: note.id, content: '', isDark, onDelete: onDeleteNote },
     }])
   }
 
   const [addingThread, setAddingThread] = useState(false)
 
+  const headerBg = isDark ? 'bg-gray-900 border-gray-800 text-white' : 'bg-white border-gray-200 text-gray-900'
+  const btnBase = isDark
+    ? 'bg-gray-800 text-gray-200 hover:bg-gray-700'
+    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+
   return (
-    <div className="w-full h-full relative">
-      <div className="absolute top-4 left-4 z-10 flex gap-2">
+    <div className={`w-full h-full flex flex-col ${isDark ? 'bg-gray-950' : 'bg-gray-50'}`}>
+      {/* Toolbar */}
+      <div className={`border-b ${headerBg} px-4 py-2 flex items-center gap-2 flex-shrink-0`}>
         <button
           onClick={() => setAddingThread(v => !v)}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shadow ${addingThread ? 'bg-blue-500 text-white' : 'bg-gray-800 text-gray-200 hover:bg-gray-700'}`}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            addingThread ? 'bg-blue-500 text-white' : btnBase
+          }`}
         >
-          {addingThread ? 'Click on canvas to place chat' : '+ Chat'}
+          {addingThread ? 'Click on canvas…' : '+ Chat'}
         </button>
         <button
           onClick={addNote}
-          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-yellow-900 text-yellow-200 hover:bg-yellow-800 transition-colors shadow"
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            isDark ? 'bg-yellow-900 text-yellow-200 hover:bg-yellow-800' : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+          }`}
         >
           + Note
         </button>
+
+        <div className="flex-1" />
+
+        {/* User name */}
+        <div className={`flex items-center gap-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+          <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+            {userName ? userName[0].toUpperCase() : '?'}
+          </div>
+          <span className="hidden sm:inline">{userName}</span>
+        </div>
+
+        {/* Theme toggle */}
+        <button
+          onClick={toggleTheme}
+          className={`ml-2 px-2 py-1.5 rounded-lg text-xs transition-colors ${btnBase}`}
+          title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {isDark ? '☀️' : '🌙'}
+        </button>
       </div>
 
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={handleNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        nodeTypes={nodeTypes}
-        fitView
-        onClick={addingThread ? (e) => { addThread(e); setAddingThread(false) } : undefined}
-        style={{ cursor: addingThread ? 'crosshair' : undefined }}
-        defaultEdgeOptions={{ style: { stroke: '#4b5563', strokeWidth: 2 }, markerEnd: { type: 'arrowclosed' as const, color: '#4b5563' } }}
-      >
-        <Background variant={BackgroundVariant.Dots} color="#374151" gap={24} size={1} />
-        <Controls className="!bg-gray-800 !border-gray-700" />
-      </ReactFlow>
+      {/* Canvas */}
+      <div className="flex-1 min-h-0">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={handleNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          nodeTypes={nodeTypes}
+          fitView
+          onClick={addingThread ? (e) => { addThread(e); setAddingThread(false) } : undefined}
+          style={{ cursor: addingThread ? 'crosshair' : undefined }}
+          defaultEdgeOptions={{
+            style: { stroke: isDark ? '#4b5563' : '#9ca3af', strokeWidth: 2 },
+            markerEnd: { type: 'arrowclosed' as const, color: isDark ? '#4b5563' : '#9ca3af' },
+          }}
+        >
+          <Background
+            variant={BackgroundVariant.Dots}
+            color={isDark ? '#374151' : '#d1d5db'}
+            gap={24}
+            size={1}
+          />
+          <Controls className={isDark ? '!bg-gray-800 !border-gray-700' : '!bg-white !border-gray-200'} />
+        </ReactFlow>
+      </div>
     </div>
   )
 }

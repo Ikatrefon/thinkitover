@@ -5,10 +5,12 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 interface Board { id: string; title: string; updatedAt: string; _count: { threads: number } }
+interface Me { name: string | null; email: string }
 
 export default function BoardsPage() {
   const router = useRouter()
   const [boards, setBoards] = useState<Board[]>([])
+  const [me, setMe] = useState<Me | null>(null)
   const [newTitle, setNewTitle] = useState('')
   const [creating, setCreating] = useState(false)
 
@@ -17,6 +19,7 @@ export default function BoardsPage() {
       if (r.status === 401) { router.push('/login'); return }
       return r.json()
     }).then(d => d && setBoards(d))
+    fetch('/api/auth/me').then(r => r.ok ? r.json() : null).then(d => d && setMe(d))
   }, [router])
 
   async function createBoard(e: React.FormEvent) {
@@ -47,9 +50,19 @@ export default function BoardsPage() {
     <div className="min-h-screen bg-gray-950 text-white">
       <header className="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
         <h1 className="text-lg font-semibold tracking-wide">Think It Over</h1>
-        <button onClick={logout} className="text-sm text-gray-400 hover:text-white transition-colors">
-          Sign out
-        </button>
+        <div className="flex items-center gap-3">
+          {me && (
+            <div className="flex items-center gap-2 text-sm text-gray-400">
+              <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">
+                {(me.name || me.email)[0].toUpperCase()}
+              </div>
+              <span>{me.name || me.email}</span>
+            </div>
+          )}
+          <button onClick={logout} className="text-sm text-gray-500 hover:text-white transition-colors">
+            Sign out
+          </button>
+        </div>
       </header>
 
       <main className="max-w-3xl mx-auto px-6 py-10">
