@@ -44,6 +44,7 @@ model Thread {
   title     String    @default("New chat")
   posX      Float     @default(0)
   posY      Float     @default(0)
+  headerBg  String    @default("")
   createdAt DateTime  @default(now())
   board     Board     @relation(fields: [boardId], references: [id], onDelete: Cascade)
   messages  Message[]

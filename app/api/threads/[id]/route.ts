@@ -15,6 +15,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ...(data.posX !== undefined && { posX: data.posX }),
       ...(data.posY !== undefined && { posY: data.posY }),
       ...(data.title !== undefined && { title: data.title }),
+      ...(data.headerBg !== undefined && { headerBg: data.headerBg }),
     },
   })
   return NextResponse.json(thread)

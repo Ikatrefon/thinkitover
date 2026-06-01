@@ -21,7 +21,7 @@ import NoteNode from './nodes/NoteNode'
 const nodeTypes = { thread: ThreadNode, note: NoteNode }
 
 interface Message { id: string; role: string; content: string }
-interface Thread { id: string; title: string; posX: number; posY: number; messages: Message[] }
+interface Thread { id: string; title: string; posX: number; posY: number; headerBg: string; messages: Message[] }
 interface NoteType { id: string; content: string; posX: number; posY: number }
 interface BoardData { id: string; threads: Thread[]; notes: NoteType[] }
 
@@ -51,6 +51,8 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
       onDeleteThread: (nodeId: string) => void
       onTitleChange: (nodeId: string, title: string) => void
       onDeleteNote: (nodeId: string) => void
+      onCollapse: (nodeId: string, collapsed: boolean) => void
+      onColorChange: (nodeId: string, headerBg: string) => void
     }
   ): Node[] {
     return [
@@ -64,9 +66,12 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
           threadId: t.id,
           title: t.title,
           messages: t.messages,
+          headerBg: t.headerBg || '',
           isDark: dark,
           onDelete: handlers.onDeleteThread,
           onTitleChange: handlers.onTitleChange,
+          onCollapse: handlers.onCollapse,
+          onColorChange: handlers.onColorChange,
         },
       })),
       ...notes.map(n => ({
@@ -106,8 +111,22 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
     setEdges(prev => prev.filter(e => e.source !== nodeId && e.target !== nodeId))
   }, [setNodes, setEdges])
 
+  const onCollapse = useCallback((nodeId: string, collapsed: boolean) => {
+    setNodes(prev => prev.map(n =>
+      n.id === nodeId
+        ? { ...n, style: { ...n.style, height: collapsed ? 44 : 420 } }
+        : n
+    ))
+  }, [setNodes])
+
+  const onColorChange = useCallback((nodeId: string, headerBg: string) => {
+    setNodes(prev => prev.map(n =>
+      n.id === nodeId ? { ...n, data: { ...n.data, headerBg } } : n
+    ))
+  }, [setNodes])
+
   useEffect(() => {
-    setNodes(buildNodes(board.threads, board.notes, isDark, { onDeleteThread, onTitleChange, onDeleteNote }))
+    setNodes(buildNodes(board.threads, board.notes, isDark, { onDeleteThread, onTitleChange, onDeleteNote, onCollapse, onColorChange }))
   }, [board]) // eslint-disable-line
 
   // Update isDark in all existing nodes when theme changes
@@ -171,9 +190,12 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
         threadId: thread.id,
         title: thread.title,
         messages: [],
+        headerBg: '',
         isDark,
         onDelete: onDeleteThread,
         onTitleChange: onTitleChange,
+        onCollapse,
+        onColorChange,
       },
     }])
   }
