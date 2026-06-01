@@ -52,12 +52,12 @@ export default function BoardsPage() {
         <h1 className="text-lg font-semibold tracking-wide">Think It Over</h1>
         <div className="flex items-center gap-3">
           {me && (
-            <div className="flex items-center gap-2 text-sm text-gray-400">
+            <Link href="/settings" className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors">
               <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">
                 {(me.name || me.email)[0].toUpperCase()}
               </div>
               <span>{me.name || me.email}</span>
-            </div>
+            </Link>
           )}
           <button onClick={logout} className="text-sm text-gray-500 hover:text-white transition-colors">
             Sign out
