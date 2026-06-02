@@ -62,7 +62,10 @@ model Message {
 model Note {
   id        String   @id @default(cuid())
   boardId   String
+  title     String   @default("Note")
   content   String   @default("")
+  headerBg  String   @default("")
+  noteBg    String   @default("")
   posX      Float    @default(0)
   posY      Float    @default(0)
   createdAt DateTime @default(now())

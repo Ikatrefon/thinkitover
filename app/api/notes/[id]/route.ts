@@ -12,9 +12,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const note = await prisma.note.update({
     where: { id },
     data: {
-      ...(data.content !== undefined && { content: data.content }),
-      ...(data.posX !== undefined && { posX: data.posX }),
-      ...(data.posY !== undefined && { posY: data.posY }),
+      ...(data.content  !== undefined && { content:  data.content  }),
+      ...(data.title    !== undefined && { title:    data.title    }),
+      ...(data.headerBg !== undefined && { headerBg: data.headerBg }),
+      ...(data.noteBg   !== undefined && { noteBg:   data.noteBg   }),
+      ...(data.posX     !== undefined && { posX:     data.posX     }),
+      ...(data.posY     !== undefined && { posY:     data.posY     }),
     },
   })
   return NextResponse.json(note)

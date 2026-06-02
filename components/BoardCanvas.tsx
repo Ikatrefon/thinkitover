@@ -23,7 +23,7 @@ const nodeTypes = { thread: ThreadNode, note: NoteNode }
 
 interface Message { id: string; role: string; content: string }
 interface Thread { id: string; title: string; posX: number; posY: number; headerBg: string; messages: Message[] }
-interface NoteType { id: string; content: string; posX: number; posY: number }
+interface NoteType { id: string; title: string; content: string; headerBg: string; noteBg: string; posX: number; posY: number }
 interface BoardData { id: string; threads: Thread[]; notes: NoteType[] }
 
 const SAVE_DELAY = 1000
@@ -51,8 +51,11 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
     handlers: {
       onDeleteThread: (nodeId: string) => void
       onTitleChange: (nodeId: string, title: string) => void
-      onDeleteNote: (nodeId: string) => void
       onColorChange: (nodeId: string, headerBg: string) => void
+      onDeleteNote: (nodeId: string) => void
+      onNoteTitleChange: (nodeId: string, title: string) => void
+      onNoteColorChange: (nodeId: string, headerBg: string) => void
+      onNoteBgChange: (nodeId: string, noteBg: string) => void
     }
   ): Node[] {
     return [
@@ -81,9 +84,15 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
         style: { width: 220, height: 160 },
         data: {
           noteId: n.id,
+          title: n.title || 'Note',
           content: n.content,
+          headerBg: n.headerBg || '',
+          noteBg: n.noteBg || '',
           isDark: dark,
           onDelete: handlers.onDeleteNote,
+          onTitleChange: handlers.onNoteTitleChange,
+          onColorChange: handlers.onNoteColorChange,
+          onBgChange: handlers.onNoteBgChange,
         },
       })),
     ]
@@ -103,6 +112,10 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
     setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, data: { ...n.data, title } } : n))
   }, [setNodes])
 
+  const onColorChange = useCallback((nodeId: string, headerBg: string) => {
+    setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, data: { ...n.data, headerBg } } : n))
+  }, [setNodes])
+
   const onDeleteNote = useCallback((nodeId: string) => {
     const noteId = nodeId.replace('n-', '')
     fetch(`/api/notes/${noteId}`, { method: 'DELETE' })
@@ -110,17 +123,25 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
     setEdges(prev => prev.filter(e => e.source !== nodeId && e.target !== nodeId))
   }, [setNodes, setEdges])
 
-  const onColorChange = useCallback((nodeId: string, headerBg: string) => {
-    setNodes(prev => prev.map(n =>
-      n.id === nodeId ? { ...n, data: { ...n.data, headerBg } } : n
-    ))
+  const onNoteTitleChange = useCallback((nodeId: string, title: string) => {
+    setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, data: { ...n.data, title } } : n))
+  }, [setNodes])
+
+  const onNoteColorChange = useCallback((nodeId: string, headerBg: string) => {
+    setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, data: { ...n.data, headerBg } } : n))
+  }, [setNodes])
+
+  const onNoteBgChange = useCallback((nodeId: string, noteBg: string) => {
+    setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, data: { ...n.data, noteBg } } : n))
   }, [setNodes])
 
   useEffect(() => {
-    setNodes(buildNodes(board.threads, board.notes, isDark, { onDeleteThread, onTitleChange, onDeleteNote, onColorChange }))
+    setNodes(buildNodes(board.threads, board.notes, isDark, {
+      onDeleteThread, onTitleChange, onColorChange,
+      onDeleteNote, onNoteTitleChange, onNoteColorChange, onNoteBgChange,
+    }))
   }, [board]) // eslint-disable-line
 
-  // Update isDark in all existing nodes when theme changes
   useEffect(() => {
     setNodes(prev => prev.map(n => ({ ...n, data: { ...n.data, isDark } })))
   }, [isDark]) // eslint-disable-line
@@ -184,7 +205,7 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
         headerBg: '',
         isDark,
         onDelete: onDeleteThread,
-        onTitleChange: onTitleChange,
+        onTitleChange,
         onColorChange,
       },
     }])
@@ -207,7 +228,18 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
       position: { x: posX, y: posY },
       dragHandle: '.drag-handle',
       style: { width: 220, height: 160 },
-      data: { noteId: note.id, content: '', isDark, onDelete: onDeleteNote },
+      data: {
+        noteId: note.id,
+        title: 'Note',
+        content: '',
+        headerBg: '',
+        noteBg: '',
+        isDark,
+        onDelete: onDeleteNote,
+        onTitleChange: onNoteTitleChange,
+        onColorChange: onNoteColorChange,
+        onBgChange: onNoteBgChange,
+      },
     }])
   }
 
