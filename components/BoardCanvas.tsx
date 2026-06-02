@@ -22,14 +22,16 @@ import NoteNode from './nodes/NoteNode'
 const nodeTypes = { thread: ThreadNode, note: NoteNode }
 
 interface Message { id: string; role: string; content: string }
-interface Thread { id: string; title: string; posX: number; posY: number; headerBg: string; messages: Message[] }
+interface Thread { id: string; title: string; posX: number; posY: number; headerBg: string; nodeBg: string; messages: Message[] }
 interface NoteType { id: string; title: string; content: string; headerBg: string; noteBg: string; posX: number; posY: number }
-interface BoardData { id: string; threads: Thread[]; notes: NoteType[] }
+interface BoardData { id: string; bgColor: string; threads: Thread[]; notes: NoteType[] }
 
 const SAVE_DELAY = 1000
 
 export default function BoardCanvas({ board, userName }: { board: BoardData; userName: string }) {
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const boardColorInputRef = useRef<HTMLInputElement>(null)
+  const [boardBg, setBoardBg] = useState(board.bgColor || '')
   const [isDark, setIsDark] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true
     const saved = localStorage.getItem('thinkitover-theme')
@@ -52,6 +54,7 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
       onDeleteThread: (nodeId: string) => void
       onTitleChange: (nodeId: string, title: string) => void
       onColorChange: (nodeId: string, headerBg: string) => void
+      onBgChange: (nodeId: string, nodeBg: string) => void
       onDeleteNote: (nodeId: string) => void
       onNoteTitleChange: (nodeId: string, title: string) => void
       onNoteColorChange: (nodeId: string, headerBg: string) => void
@@ -70,10 +73,12 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
           title: t.title,
           messages: t.messages,
           headerBg: t.headerBg || '',
+          nodeBg: t.nodeBg || '',
           isDark: dark,
           onDelete: handlers.onDeleteThread,
           onTitleChange: handlers.onTitleChange,
           onColorChange: handlers.onColorChange,
+          onBgChange: handlers.onBgChange,
         },
       })),
       ...notes.map(n => ({
@@ -116,6 +121,19 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
     setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, data: { ...n.data, headerBg } } : n))
   }, [setNodes])
 
+  const onBgChange = useCallback((nodeId: string, nodeBg: string) => {
+    setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, data: { ...n.data, nodeBg } } : n))
+  }, [setNodes])
+
+  async function saveBoardBg(color: string) {
+    setBoardBg(color)
+    await fetch(`/api/boards/${board.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bgColor: color }),
+    })
+  }
+
   const onDeleteNote = useCallback((nodeId: string) => {
     const noteId = nodeId.replace('n-', '')
     fetch(`/api/notes/${noteId}`, { method: 'DELETE' })
@@ -137,7 +155,7 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
 
   useEffect(() => {
     setNodes(buildNodes(board.threads, board.notes, isDark, {
-      onDeleteThread, onTitleChange, onColorChange,
+      onDeleteThread, onTitleChange, onColorChange, onBgChange,
       onDeleteNote, onNoteTitleChange, onNoteColorChange, onNoteBgChange,
     }))
   }, [board]) // eslint-disable-line
@@ -203,10 +221,12 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
         title: thread.title,
         messages: [],
         headerBg: '',
+        nodeBg: '',
         isDark,
         onDelete: onDeleteThread,
         onTitleChange,
         onColorChange,
+        onBgChange,
       },
     }])
   }
@@ -251,7 +271,7 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
 
   return (
-    <div className={`w-full h-full flex flex-col ${isDark ? 'bg-gray-950' : 'bg-gray-50'}`}>
+    <div className={`w-full h-full flex flex-col ${isDark ? 'bg-gray-950' : 'bg-gray-50'}`} style={boardBg ? { backgroundColor: boardBg } : {}}>
       {/* Toolbar */}
       <div className={`border-b ${headerBg} px-4 py-2 flex items-center gap-2 flex-shrink-0`}>
         <button
@@ -272,6 +292,25 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
         </button>
 
         <div className="flex-1" />
+
+        {/* Board background color */}
+        <input
+          ref={boardColorInputRef}
+          type="color"
+          value={boardBg || (isDark ? '#030712' : '#f9fafb')}
+          onChange={e => saveBoardBg(e.target.value)}
+          className="sr-only"
+        />
+        <button
+          onClick={() => boardColorInputRef.current?.click()}
+          className={`p-1.5 rounded-lg transition-colors ${btnBase}`}
+          title="Board background color"
+        >
+          <span
+            className="w-4 h-4 rounded-full border border-gray-500 block"
+            style={{ backgroundColor: boardBg || (isDark ? '#030712' : '#f9fafb') }}
+          />
+        </button>
 
         {/* User name */}
         <div className={`flex items-center gap-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>

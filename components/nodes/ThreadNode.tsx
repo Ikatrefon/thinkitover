@@ -20,10 +20,12 @@ interface ThreadData {
   title: string
   messages: Message[]
   headerBg: string
+  nodeBg: string
   isDark: boolean
   onDelete: (id: string) => void
   onTitleChange: (id: string, title: string) => void
   onColorChange: (id: string, headerBg: string) => void
+  onBgChange: (id: string, nodeBg: string) => void
 }
 
 const PALETTE = [
@@ -51,12 +53,14 @@ export default function ThreadNode({ id, data, selected }: NodeProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
   const [headerBg, setHeaderBg] = useState(d.headerBg || '')
+  const [nodeBg, setNodeBg] = useState(d.nodeBg || '')
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [loadingFile, setLoadingFile] = useState(false)
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const paletteRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const colorInputRef = useRef<HTMLInputElement>(null)
   const expandedHeightRef = useRef(420)
 
   useEffect(() => {
@@ -217,6 +221,16 @@ export default function ThreadNode({ id, data, selected }: NodeProps) {
     })
   }
 
+  async function pickNodeBg(color: string) {
+    setNodeBg(color)
+    d.onBgChange(id, color)
+    await fetch(`/api/threads/${d.threadId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nodeBg: color }),
+    })
+  }
+
   // — Drag & drop on messages area —
   function onDrop(e: React.DragEvent) {
     e.preventDefault()
@@ -229,14 +243,15 @@ export default function ThreadNode({ id, data, selected }: NodeProps) {
   const headerStyle = customBg ? { backgroundColor: customBg } : {}
   const headerBase = customBg ? 'text-white' : (dark ? 'bg-gray-800 text-white' : 'bg-gray-50 text-gray-900')
   const headerBorderB = collapsed ? '' : (customBg ? '' : (dark ? 'border-b border-gray-700' : 'border-b border-gray-200'))
-  const bodyBg = dark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+  const bodyBg = nodeBg ? 'border-gray-700' : (dark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300')
+  const bodyStyle = nodeBg ? { backgroundColor: nodeBg } : {}
   const textMuted = customBg ? 'text-white/60' : (dark ? 'text-gray-400' : 'text-gray-500')
   const inputBg = dark ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'
   const userColor = dark ? 'text-blue-300' : 'text-blue-600'
   const assistantColor = dark ? 'text-gray-200' : 'text-gray-800'
 
   return (
-    <div className={`${bodyBg} border rounded-xl shadow-xl flex flex-col w-full h-full min-w-[260px]`}>
+    <div className={`${bodyBg} border rounded-xl shadow-xl flex flex-col w-full h-full min-w-[260px]`} style={bodyStyle}>
       {!collapsed && (
         <NodeResizer
           minWidth={260} minHeight={320}
@@ -309,6 +324,27 @@ export default function ThreadNode({ id, data, selected }: NodeProps) {
               ))}
             </div>
           )}
+        </div>
+
+        {/* Background color picker */}
+        <div className="relative flex-shrink-0 nodrag">
+          <input
+            ref={colorInputRef}
+            type="color"
+            value={nodeBg || '#1f2937'}
+            onChange={e => pickNodeBg(e.target.value)}
+            className="sr-only"
+          />
+          <button
+            onClick={e => { e.stopPropagation(); colorInputRef.current?.click() }}
+            className="w-5 h-5 flex items-center justify-center rounded hover:bg-black/20 transition-colors"
+            title="Background color"
+          >
+            <span
+              className="w-3 h-3 rounded-full border border-white/50 flex-shrink-0"
+              style={{ backgroundColor: nodeBg || (dark ? '#1f2937' : '#ffffff') }}
+            />
+          </button>
         </div>
 
         <button
