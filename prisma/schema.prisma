@@ -28,15 +28,29 @@ model Session {
 }
 
 model Board {
-  id        String   @id @default(cuid())
+  id        String          @id @default(cuid())
   title     String
   userId    String
-  bgColor   String   @default("")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bgColor   String          @default("")
+  drawing   String          @default("")
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   threads   Thread[]
   notes     Note[]
+  images    BoardImage[]
+}
+
+model BoardImage {
+  id        String   @id @default(cuid())
+  boardId   String
+  filename  String
+  posX      Float    @default(0)
+  posY      Float    @default(0)
+  width     Float    @default(320)
+  height    Float    @default(240)
+  createdAt DateTime @default(now())
+  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
 }
 
 model Thread {

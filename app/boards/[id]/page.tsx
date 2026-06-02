@@ -14,6 +14,7 @@ export default async function BoardPage({ params }: { params: Promise<{ id: stri
     include: {
       threads: { include: { messages: { orderBy: { createdAt: 'asc' } } } },
       notes: true,
+      images: true,
     },
   })
   if (!board) redirect('/boards')
