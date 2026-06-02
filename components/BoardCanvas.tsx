@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import Image from 'next/image'
 import {
   ReactFlow,
   addEdge,
@@ -51,7 +52,6 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
       onDeleteThread: (nodeId: string) => void
       onTitleChange: (nodeId: string, title: string) => void
       onDeleteNote: (nodeId: string) => void
-      onCollapse: (nodeId: string, collapsed: boolean) => void
       onColorChange: (nodeId: string, headerBg: string) => void
     }
   ): Node[] {
@@ -70,7 +70,6 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
           isDark: dark,
           onDelete: handlers.onDeleteThread,
           onTitleChange: handlers.onTitleChange,
-          onCollapse: handlers.onCollapse,
           onColorChange: handlers.onColorChange,
         },
       })),
@@ -111,14 +110,6 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
     setEdges(prev => prev.filter(e => e.source !== nodeId && e.target !== nodeId))
   }, [setNodes, setEdges])
 
-  const onCollapse = useCallback((nodeId: string, collapsed: boolean) => {
-    setNodes(prev => prev.map(n =>
-      n.id === nodeId
-        ? { ...n, style: { ...n.style, height: collapsed ? 44 : 420 } }
-        : n
-    ))
-  }, [setNodes])
-
   const onColorChange = useCallback((nodeId: string, headerBg: string) => {
     setNodes(prev => prev.map(n =>
       n.id === nodeId ? { ...n, data: { ...n.data, headerBg } } : n
@@ -126,7 +117,7 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
   }, [setNodes])
 
   useEffect(() => {
-    setNodes(buildNodes(board.threads, board.notes, isDark, { onDeleteThread, onTitleChange, onDeleteNote, onCollapse, onColorChange }))
+    setNodes(buildNodes(board.threads, board.notes, isDark, { onDeleteThread, onTitleChange, onDeleteNote, onColorChange }))
   }, [board]) // eslint-disable-line
 
   // Update isDark in all existing nodes when theme changes
@@ -194,7 +185,6 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
         isDark,
         onDelete: onDeleteThread,
         onTitleChange: onTitleChange,
-        onCollapse,
         onColorChange,
       },
     }])
@@ -262,10 +252,15 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
         {/* Theme toggle */}
         <button
           onClick={toggleTheme}
-          className={`ml-2 px-2 py-1.5 rounded-lg text-xs transition-colors ${btnBase}`}
+          className={`ml-2 p-1.5 rounded-lg transition-colors ${btnBase}`}
           title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
         >
-          {isDark ? '☀️' : '🌙'}
+          <Image
+            src={isDark ? '/icons/sunny-day-dark-bcg.png' : '/icons/night-time-white-bcg.png'}
+            alt={isDark ? 'Light mode' : 'Dark mode'}
+            width={16}
+            height={16}
+          />
         </button>
       </div>
 

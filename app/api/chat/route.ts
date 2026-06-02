@@ -5,11 +5,23 @@ import { getSession } from '@/lib/auth'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
+interface Attachment {
+  name: string
+  type: 'image' | 'document' | 'text'
+  mediaType?: string
+  data?: string
+  content?: string
+}
+
 export async function POST(req: NextRequest) {
   const user = await getSession()
   if (!user) return new Response('Unauthorized', { status: 401 })
 
-  const { threadId, content } = await req.json()
+  const { threadId, content, attachments } = await req.json() as {
+    threadId: string
+    content: string
+    attachments?: Attachment[]
+  }
 
   const thread = await prisma.thread.findUnique({
     where: { id: threadId },
@@ -22,15 +34,63 @@ export async function POST(req: NextRequest) {
     return new Response('Not found', { status: 404 })
   }
 
-  await prisma.message.create({ data: { threadId, role: 'user', content } })
+  // Build the user message content for Anthropic (multimodal)
+  const userContent: Anthropic.Messages.ContentBlockParam[] = []
 
-  const history = thread.messages.map((m: { role: string; content: string }) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
-  history.push({ role: 'user', content })
+  if (attachments && attachments.length > 0) {
+    for (const att of attachments) {
+      if (att.type === 'image' && att.data && att.mediaType) {
+        userContent.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: att.mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+            data: att.data,
+          },
+        })
+      } else if (att.type === 'document' && att.data) {
+        userContent.push({
+          type: 'document',
+          source: {
+            type: 'base64',
+            media_type: 'application/pdf',
+            data: att.data,
+          },
+        } as unknown as Anthropic.Messages.ContentBlockParam)
+      } else if (att.type === 'text' && att.content) {
+        userContent.push({
+          type: 'text',
+          text: `[File: ${att.name}]\n\`\`\`\n${att.content}\n\`\`\``,
+        })
+      }
+    }
+  }
 
-  const stream = await anthropic.messages.stream({
+  if (content) {
+    userContent.push({ type: 'text', text: content })
+  }
+
+  // Save user message to DB with file labels
+  const fileLabel = attachments && attachments.length > 0
+    ? attachments.map(a => `📎 ${a.name}`).join(' ') + (content ? '\n' : '')
+    : ''
+  const savedContent = fileLabel + (content || '')
+  await prisma.message.create({ data: { threadId, role: 'user', content: savedContent } })
+
+  const history = thread.messages.map((m: { role: string; content: string }) => ({
+    role: m.role as 'user' | 'assistant',
+    content: m.content,
+  }))
+
+  const messages: Anthropic.Messages.MessageParam[] = [
+    ...history,
+    { role: 'user', content: userContent.length > 0 ? userContent : content },
+  ]
+
+  const stream = anthropic.messages.stream({
     model: 'claude-sonnet-4-6',
     max_tokens: 4096,
-    messages: history,
+    messages,
   })
 
   let fullText = ''

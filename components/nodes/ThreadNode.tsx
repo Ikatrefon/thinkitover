@@ -1,9 +1,20 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Handle, Position, NodeProps, NodeResizer } from '@xyflow/react'
+import { Handle, Position, NodeProps, NodeResizer, useReactFlow } from '@xyflow/react'
+import Image from 'next/image'
 
 interface Message { id: string; role: string; content: string }
+
+interface Attachment {
+  name: string
+  type: 'image' | 'document' | 'text'
+  mediaType?: string
+  data?: string    // base64 for images and PDFs
+  content?: string // for text files
+  preview?: string // data URL thumbnail for images
+}
+
 interface ThreadData {
   threadId: string
   title: string
@@ -12,7 +23,6 @@ interface ThreadData {
   isDark: boolean
   onDelete: (id: string) => void
   onTitleChange: (id: string, title: string) => void
-  onCollapse: (id: string, collapsed: boolean) => void
   onColorChange: (id: string, headerBg: string) => void
 }
 
@@ -27,8 +37,12 @@ const PALETTE = [
   { bg: '#831843', label: 'Rose'   },
 ]
 
+const ACCEPT = '.png,.jpg,.jpeg,.webp,.gif,.pdf,.doc,.docx,.txt,.md,.csv,.json,.py,.ts,.tsx,.js,.jsx,.html,.css'
+
 export default function ThreadNode({ id, data, selected }: NodeProps) {
   const d = data as unknown as ThreadData
+  const { updateNode, getNode } = useReactFlow()
+
   const [messages, setMessages] = useState<Message[]>(d.messages || [])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -37,29 +51,114 @@ export default function ThreadNode({ id, data, selected }: NodeProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
   const [headerBg, setHeaderBg] = useState(d.headerBg || '')
+  const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [loadingFile, setLoadingFile] = useState(false)
+
   const bottomRef = useRef<HTMLDivElement>(null)
   const paletteRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const expandedHeightRef = useRef(420)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Close palette on outside click
   useEffect(() => {
     function handler(e: MouseEvent) {
-      if (paletteRef.current && !paletteRef.current.contains(e.target as Node)) {
-        setShowPalette(false)
-      }
+      if (paletteRef.current && !paletteRef.current.contains(e.target as Node)) setShowPalette(false)
     }
     if (showPalette) document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [showPalette])
 
+  // — Collapse —
+  function toggleCollapse() {
+    const next = !collapsed
+    setCollapsed(next)
+    setShowPalette(false)
+    if (next) {
+      const node = getNode(id)
+      const h = (node?.style?.height as number) || 420
+      expandedHeightRef.current = h
+      updateNode(id, { style: { width: (node?.style?.width as number) || 320, height: 44 } })
+    } else {
+      const node = getNode(id)
+      updateNode(id, { style: { width: (node?.style?.width as number) || 320, height: expandedHeightRef.current } })
+    }
+  }
+
+  // — File handling —
+  async function handleFiles(files: FileList | null) {
+    if (!files || files.length === 0) return
+    setLoadingFile(true)
+    const newAttachments: Attachment[] = []
+
+    for (const file of Array.from(files)) {
+      const ext = file.name.split('.').pop()?.toLowerCase() || ''
+      const isImage = ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)
+      const isPDF = ext === 'pdf'
+      const isWord = ['doc', 'docx'].includes(ext)
+      const isText = ['txt', 'md', 'csv', 'json', 'py', 'ts', 'tsx', 'js', 'jsx', 'html', 'css'].includes(ext)
+
+      try {
+        if (isImage) {
+          const data = await readAsBase64(file)
+          const mediaType = file.type as 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
+          newAttachments.push({ name: file.name, type: 'image', mediaType, data, preview: `data:${file.type};base64,${data}` })
+        } else if (isPDF) {
+          const data = await readAsBase64(file)
+          newAttachments.push({ name: file.name, type: 'document', mediaType: 'application/pdf', data })
+        } else if (isWord) {
+          const arrayBuffer = await file.arrayBuffer()
+          const mammoth = (await import('mammoth/mammoth.browser')).default
+          const result = await mammoth.extractRawText({ arrayBuffer })
+          newAttachments.push({ name: file.name, type: 'text', content: result.value })
+        } else if (isText) {
+          const content = await readAsText(file)
+          newAttachments.push({ name: file.name, type: 'text', content })
+        }
+      } catch (e) {
+        console.error('File read error:', e)
+      }
+    }
+
+    setAttachments(prev => [...prev, ...newAttachments])
+    setLoadingFile(false)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  function readAsBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const result = reader.result as string
+        resolve(result.split(',')[1]) // strip data URL prefix
+      }
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }
+
+  function readAsText(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsText(file)
+    })
+  }
+
+  // — Send message —
   async function sendMessage() {
     const content = input.trim()
-    if (!content || streaming) return
+    if ((!content && attachments.length === 0) || streaming) return
     setInput('')
-    const userMsg: Message = { id: Date.now().toString(), role: 'user', content }
+    const sentAttachments = [...attachments]
+    setAttachments([])
+
+    const fileLabel = sentAttachments.map(a => `📎 ${a.name}`).join(' ')
+    const displayContent = fileLabel ? `${fileLabel}\n${content}` : content
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: displayContent }
     setMessages(prev => [...prev, userMsg])
     setStreaming(true)
     const assistantMsg: Message = { id: (Date.now() + 1).toString(), role: 'assistant', content: '' }
@@ -69,7 +168,7 @@ export default function ThreadNode({ id, data, selected }: NodeProps) {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ threadId: d.threadId, content }),
+        body: JSON.stringify({ threadId: d.threadId, content, attachments: sentAttachments }),
       })
       if (!res.ok) {
         const errText = await res.text()
@@ -107,13 +206,6 @@ export default function ThreadNode({ id, data, selected }: NodeProps) {
     })
   }
 
-  function toggleCollapse() {
-    const next = !collapsed
-    setCollapsed(next)
-    setShowPalette(false)
-    d.onCollapse(id, next)
-  }
-
   async function pickColor(bg: string) {
     setHeaderBg(bg)
     setShowPalette(false)
@@ -125,18 +217,18 @@ export default function ThreadNode({ id, data, selected }: NodeProps) {
     })
   }
 
+  // — Drag & drop on messages area —
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault()
+    handleFiles(e.dataTransfer.files)
+  }
+
+  // — Styles —
   const dark = d.isDark !== false
-
-  // Header styling
-  const customBg = headerBg || (dark ? '' : '')
+  const customBg = headerBg
   const headerStyle = customBg ? { backgroundColor: customBg } : {}
-  const headerBase = customBg
-    ? 'text-white'
-    : dark
-    ? 'bg-gray-800 text-white border-gray-700'
-    : 'bg-gray-50 text-gray-900 border-gray-200'
-  const headerBorder = customBg ? '' : (dark ? 'border-b border-gray-700' : 'border-b border-gray-200')
-
+  const headerBase = customBg ? 'text-white' : (dark ? 'bg-gray-800 text-white' : 'bg-gray-50 text-gray-900')
+  const headerBorderB = collapsed ? '' : (customBg ? '' : (dark ? 'border-b border-gray-700' : 'border-b border-gray-200'))
   const bodyBg = dark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
   const textMuted = customBg ? 'text-white/60' : (dark ? 'text-gray-400' : 'text-gray-500')
   const inputBg = dark ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'
@@ -144,9 +236,7 @@ export default function ThreadNode({ id, data, selected }: NodeProps) {
   const assistantColor = dark ? 'text-gray-200' : 'text-gray-800'
 
   return (
-    <div className={`${bodyBg} border rounded-xl shadow-xl flex flex-col w-full h-full min-w-[260px]`}
-         style={{ minHeight: collapsed ? 0 : 320 }}>
-
+    <div className={`${bodyBg} border rounded-xl shadow-xl flex flex-col w-full h-full min-w-[260px]`}>
       {!collapsed && (
         <NodeResizer
           minWidth={260} minHeight={320}
@@ -159,21 +249,19 @@ export default function ThreadNode({ id, data, selected }: NodeProps) {
       <Handle type="target" position={Position.Left} className="!bg-blue-500" />
       <Handle type="source" position={Position.Right} className="!bg-blue-500" />
 
-      {/* HEADER — drag handle + title + controls */}
+      {/* Header */}
       <div
-        className={`drag-handle flex items-center gap-1 px-2 py-2 rounded-t-xl flex-shrink-0 cursor-grab active:cursor-grabbing select-none ${headerBase} ${headerBorder} ${collapsed ? 'rounded-b-xl' : ''}`}
+        className={`drag-handle flex items-center gap-1 px-2 py-2 rounded-t-xl flex-shrink-0 cursor-grab active:cursor-grabbing select-none ${headerBase} ${headerBorderB} ${collapsed ? 'rounded-b-xl' : ''}`}
         style={headerStyle}
       >
-        {/* Collapse toggle */}
         <button
           onClick={e => { e.stopPropagation(); toggleCollapse() }}
-          className={`flex-shrink-0 w-5 h-5 flex items-center justify-center rounded hover:bg-black/20 transition-colors text-xs nodrag`}
+          className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded hover:bg-black/20 transition-colors text-xs nodrag"
           title={collapsed ? 'Expand' : 'Collapse'}
         >
           {collapsed ? '▶' : '▼'}
         </button>
 
-        {/* Title */}
         <div className="flex-1 min-w-0 mx-1">
           {editingTitle ? (
             <input
@@ -199,10 +287,10 @@ export default function ThreadNode({ id, data, selected }: NodeProps) {
         <div className="relative flex-shrink-0 nodrag" ref={paletteRef}>
           <button
             onClick={e => { e.stopPropagation(); setShowPalette(v => !v) }}
-            className="w-5 h-5 flex items-center justify-center rounded hover:bg-black/20 transition-colors text-xs"
+            className="w-5 h-5 flex items-center justify-center rounded hover:bg-black/20 transition-colors"
             title="Header color"
           >
-            🎨
+            <Image src="/icons/palette.png" alt="color" width={14} height={14} className="opacity-80" />
           </button>
           {showPalette && (
             <div
@@ -215,9 +303,7 @@ export default function ThreadNode({ id, data, selected }: NodeProps) {
                   key={c.bg}
                   onClick={() => pickColor(c.bg)}
                   title={c.label}
-                  className={`w-7 h-7 rounded-lg border-2 transition-transform hover:scale-110 ${
-                    headerBg === c.bg ? 'border-white scale-110' : 'border-transparent'
-                  }`}
+                  className={`w-7 h-7 rounded-lg border-2 transition-transform hover:scale-110 ${headerBg === c.bg ? 'border-white scale-110' : 'border-transparent'}`}
                   style={{ backgroundColor: c.bg || (dark ? '#374151' : '#e5e7eb') }}
                 />
               ))}
@@ -225,7 +311,6 @@ export default function ThreadNode({ id, data, selected }: NodeProps) {
           )}
         </div>
 
-        {/* Delete */}
         <button
           onClick={() => d.onDelete(id)}
           className={`flex-shrink-0 w-5 h-5 flex items-center justify-center rounded hover:bg-black/20 transition-colors text-sm nodrag ${textMuted} hover:!text-red-400`}
@@ -234,12 +319,16 @@ export default function ThreadNode({ id, data, selected }: NodeProps) {
         </button>
       </div>
 
-      {/* Body — hidden when collapsed */}
+      {/* Body */}
       {!collapsed && (
         <>
-          <div className="nodrag nopan flex-1 overflow-y-auto p-3 space-y-2 min-h-0 cursor-text">
+          <div
+            className="nodrag nopan flex-1 overflow-y-auto p-3 space-y-2 min-h-0 cursor-text"
+            onDrop={onDrop}
+            onDragOver={e => e.preventDefault()}
+          >
             {messages.length === 0 && (
-              <p className={`${textMuted} text-xs text-center pt-8`}>Ask anything…</p>
+              <p className={`${textMuted} text-xs text-center pt-8`}>Ask anything…<br/><span className="text-xs opacity-50">Drop files here</span></p>
             )}
             {messages.map(m => (
               <div key={m.id} className={`text-xs leading-relaxed ${m.role === 'user' ? userColor : assistantColor}`}>
@@ -253,7 +342,42 @@ export default function ThreadNode({ id, data, selected }: NodeProps) {
             <div ref={bottomRef} />
           </div>
 
-          <div className={`border-t ${dark ? 'border-gray-700' : 'border-gray-200'} p-2 flex gap-2 flex-shrink-0`}>
+          {/* Attachment preview strip */}
+          {attachments.length > 0 && (
+            <div className={`px-2 py-1.5 flex flex-wrap gap-1.5 border-t ${dark ? 'border-gray-700' : 'border-gray-200'} nodrag`}>
+              {attachments.map((att, i) => (
+                <div key={i} className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-xs ${dark ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-700'}`}>
+                  {att.preview ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={att.preview} alt={att.name} className="w-5 h-5 object-cover rounded" />
+                  ) : (
+                    <span>{att.type === 'document' ? '📄' : '📝'}</span>
+                  )}
+                  <span className="max-w-[80px] truncate">{att.name}</span>
+                  <button onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))} className="opacity-50 hover:opacity-100">×</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Input row */}
+          <div className={`border-t ${dark ? 'border-gray-700' : 'border-gray-200'} p-2 flex gap-1.5 flex-shrink-0 items-end`}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ACCEPT}
+              multiple
+              className="hidden"
+              onChange={e => handleFiles(e.target.files)}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={loadingFile}
+              className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg transition-colors nodrag ${dark ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-500 hover:bg-gray-100'}`}
+              title="Attach file"
+            >
+              {loadingFile ? <span className="animate-spin text-xs">⏳</span> : <span className="text-base">📎</span>}
+            </button>
             <textarea
               value={input}
               onChange={e => setInput(e.target.value)}
@@ -264,8 +388,8 @@ export default function ThreadNode({ id, data, selected }: NodeProps) {
             />
             <button
               onClick={sendMessage}
-              disabled={streaming || !input.trim()}
-              className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg px-2 text-xs font-medium transition-colors self-end py-1.5 nodrag"
+              disabled={streaming || (!input.trim() && attachments.length === 0)}
+              className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg px-2 text-xs font-medium transition-colors py-1.5 nodrag flex-shrink-0"
             >
               ↑
             </button>
