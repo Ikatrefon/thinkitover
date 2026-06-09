@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 import {
   ReactFlow,
+  ReactFlowInstance,
   addEdge,
   useNodesState,
   useEdgesState,
@@ -37,6 +38,7 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const boardColorInputRef = useRef<HTMLInputElement>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
+  const rfRef = useRef<ReactFlowInstance | null>(null)
   const [boardBg, setBoardBg] = useState(board.bgColor || '')
   const [drawing, setDrawing] = useState(board.drawing || '')
   const [showDrawing, setShowDrawing] = useState(false)
@@ -231,17 +233,16 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
   }
 
   // ── Export Excalidraw drawing as PNG node ──────────────────────
-  async function handleExportToCanvas(blob: Blob) {
-    const url = URL.createObjectURL(blob)
-    const img = new window.Image()
-    await new Promise<void>(resolve => { img.onload = () => resolve(); img.src = url })
-    const w = img.naturalWidth
-    const h = img.naturalHeight
-    URL.revokeObjectURL(url)
+  async function handleExportToCanvas(blob: Blob, screenX: number, screenY: number, screenW: number, screenH: number) {
+    const rf = rfRef.current
+    const { x: posX, y: posY } = rf
+      ? rf.screenToFlowPosition({ x: screenX, y: screenY })
+      : { x: 200, y: 200 }
+    const rfZoom = rf?.getZoom() ?? 1
+    const width  = Math.max(screenW / rfZoom, 40)
+    const height = Math.max(screenH / rfZoom, 40)
     const file = new File([blob], `drawing-${Date.now()}.png`, { type: 'image/png' })
-    const posX = Math.random() * 300 + 100
-    const posY = Math.random() * 200 + 100
-    await uploadImageFile(file, posX, posY, w, h)
+    await uploadImageFile(file, posX, posY, width, height)
   }
 
   // ── Paste from clipboard ───────────────────────────────────────
@@ -366,6 +367,7 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
           onConnect={onConnect}
           nodeTypes={nodeTypes}
           fitView
+          onInit={(instance) => { rfRef.current = instance }}
           onClick={addingThread ? (e) => { addThread(e); setAddingThread(false) } : undefined}
           style={{ cursor: addingThread ? 'crosshair' : undefined }}
           defaultEdgeOptions={{
@@ -377,16 +379,16 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
           <Controls className={isDark ? '!bg-gray-800 !border-gray-700' : '!bg-white !border-gray-200'} />
         </ReactFlow>
 
-        {/* Drawing overlay — always mounted, visible/interactive only when editing */}
-        <DrawingOverlay
-          boardId={board.id}
-          initialData={drawing}
-          isDark={isDark}
-          isEditing={showDrawing}
-          onClose={() => setShowDrawing(false)}
-          onSave={setDrawing}
-          onExportToCanvas={handleExportToCanvas}
-        />
+        {showDrawing && (
+          <DrawingOverlay
+            boardId={board.id}
+            initialData={drawing}
+            isDark={isDark}
+            onClose={() => setShowDrawing(false)}
+            onSave={setDrawing}
+            onExportToCanvas={handleExportToCanvas}
+          />
+        )}
       </div>
     </div>
   )
