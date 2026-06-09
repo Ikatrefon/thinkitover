@@ -361,16 +361,15 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
           <Controls className={isDark ? '!bg-gray-800 !border-gray-700' : '!bg-white !border-gray-200'} />
         </ReactFlow>
 
-        {/* Drawing overlay */}
-        {showDrawing && (
-          <DrawingOverlay
-            boardId={board.id}
-            initialData={drawing}
-            isDark={isDark}
-            onClose={() => setShowDrawing(false)}
-            onSave={setDrawing}
-          />
-        )}
+        {/* Drawing overlay — always mounted, visible/interactive only when editing */}
+        <DrawingOverlay
+          boardId={board.id}
+          initialData={drawing}
+          isDark={isDark}
+          isEditing={showDrawing}
+          onClose={() => setShowDrawing(false)}
+          onSave={setDrawing}
+        />
       </div>
     </div>
   )

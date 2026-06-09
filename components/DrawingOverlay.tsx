@@ -10,13 +10,14 @@ const Excalidraw = dynamic(
 
 interface Props {
   boardId: string
-  initialData: string // JSON string
+  initialData: string
   isDark: boolean
+  isEditing: boolean
   onClose: () => void
   onSave: (drawing: string) => void
 }
 
-export default function DrawingOverlay({ boardId, initialData, isDark, onClose, onSave }: Props) {
+export default function DrawingOverlay({ boardId, initialData, isDark, isEditing, onClose, onSave }: Props) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [initialElements, setInitialElements] = useState<any[]>([])
@@ -36,6 +37,7 @@ export default function DrawingOverlay({ boardId, initialData, isDark, onClose, 
   const handleChange = useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (elements: readonly any[], appState: any) => {
+      if (!isEditing) return
       if (saveTimer.current) clearTimeout(saveTimer.current)
       saveTimer.current = setTimeout(() => {
         const drawing = JSON.stringify({ elements, appState })
@@ -47,26 +49,32 @@ export default function DrawingOverlay({ boardId, initialData, isDark, onClose, 
         })
       }, 1000)
     },
-    [boardId]
+    [boardId, isEditing]
   )
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col">
-      {/* Toolbar strip */}
-      <div className="flex-shrink-0 flex items-center justify-end px-3 py-1.5 bg-black/20 backdrop-blur-sm">
-        <button
-          onClick={onClose}
-          className="px-3 py-1 rounded-lg text-xs font-medium bg-white/20 hover:bg-white/30 text-white transition-colors"
-        >
-          ✓ Done drawing
-        </button>
-      </div>
+    <div
+      className="fixed inset-0 z-50 flex flex-col"
+      style={{ pointerEvents: isEditing ? 'auto' : 'none' }}
+    >
+      {/* Toolbar strip — only visible when editing */}
+      {isEditing && (
+        <div className="flex-shrink-0 flex items-center justify-end px-3 py-1.5 bg-black/20 backdrop-blur-sm" style={{ pointerEvents: 'auto' }}>
+          <button
+            onClick={onClose}
+            className="px-3 py-1 rounded-lg text-xs font-medium bg-white/20 hover:bg-white/30 text-white transition-colors"
+          >
+            ✓ Done drawing
+          </button>
+        </div>
+      )}
 
-      {/* Excalidraw canvas */}
+      {/* Excalidraw canvas — always mounted so drawings persist */}
       <div className="flex-1 min-h-0">
         <Excalidraw
           initialData={{ elements: initialElements, appState: { ...initialAppState, theme: isDark ? 'dark' : 'light', viewBackgroundColor: 'transparent' } }}
           onChange={handleChange}
+          viewModeEnabled={!isEditing}
           UIOptions={{ canvasActions: { changeViewBackgroundColor: false, export: false, loadScene: false, saveToActiveFile: false, saveAsImage: false, toggleTheme: false } }}
         />
       </div>
