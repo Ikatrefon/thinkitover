@@ -15,6 +15,8 @@ export async function POST(req: NextRequest) {
   const boardId = formData.get('boardId') as string | null
   const posX = parseFloat((formData.get('posX') as string) || '100')
   const posY = parseFloat((formData.get('posY') as string) || '100')
+  const width = parseFloat((formData.get('width') as string) || '320')
+  const height = parseFloat((formData.get('height') as string) || '240')
 
   if (!file || !boardId) {
     return NextResponse.json({ error: 'Missing file or boardId' }, { status: 400 })
@@ -34,7 +36,7 @@ export async function POST(req: NextRequest) {
   await writeFile(filepath, buffer)
 
   const image = await prisma.boardImage.create({
-    data: { boardId, filename, posX, posY },
+    data: { boardId, filename, posX, posY, width, height },
   })
 
   return NextResponse.json(image)

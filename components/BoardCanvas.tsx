@@ -211,12 +211,14 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
   }
 
   // ── Upload image file ──────────────────────────────────────────
-  async function uploadImageFile(file: File, posX = 100, posY = 100) {
+  async function uploadImageFile(file: File, posX = 100, posY = 100, width?: number, height?: number) {
     const form = new FormData()
     form.append('file', file)
     form.append('boardId', board.id)
     form.append('posX', String(posX))
     form.append('posY', String(posY))
+    if (width)  form.append('width',  String(width))
+    if (height) form.append('height', String(height))
     const res = await fetch('/api/upload', { method: 'POST', body: form })
     if (!res.ok) return
     const img: BoardImageType = await res.json()
@@ -226,6 +228,20 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
       style: { width: img.width, height: img.height },
       data: { imageId: img.id, filename: img.filename, isDark, onDelete: onDeleteImage },
     }])
+  }
+
+  // ── Export Excalidraw drawing as PNG node ──────────────────────
+  async function handleExportToCanvas(blob: Blob) {
+    const url = URL.createObjectURL(blob)
+    const img = new window.Image()
+    await new Promise<void>(resolve => { img.onload = () => resolve(); img.src = url })
+    const w = img.naturalWidth
+    const h = img.naturalHeight
+    URL.revokeObjectURL(url)
+    const file = new File([blob], `drawing-${Date.now()}.png`, { type: 'image/png' })
+    const posX = Math.random() * 300 + 100
+    const posY = Math.random() * 200 + 100
+    await uploadImageFile(file, posX, posY, w, h)
   }
 
   // ── Paste from clipboard ───────────────────────────────────────
@@ -369,6 +385,7 @@ export default function BoardCanvas({ board, userName }: { board: BoardData; use
           isEditing={showDrawing}
           onClose={() => setShowDrawing(false)}
           onSave={setDrawing}
+          onExportToCanvas={handleExportToCanvas}
         />
       </div>
     </div>
