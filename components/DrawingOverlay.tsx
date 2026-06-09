@@ -51,9 +51,9 @@ export default function DrawingOverlay({ boardId, initialData, isDark, onClose, 
   )
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col" style={{ backgroundColor: isDark ? '#1e1e2e' : '#ffffff' }}>
+    <div className="fixed inset-0 z-50 flex flex-col">
       {/* Toolbar strip */}
-      <div className="flex-shrink-0 flex items-center justify-end px-3 py-1.5 bg-black/30 backdrop-blur-sm">
+      <div className="flex-shrink-0 flex items-center justify-end px-3 py-1.5 bg-black/20 backdrop-blur-sm">
         <button
           onClick={onClose}
           className="px-3 py-1 rounded-lg text-xs font-medium bg-white/20 hover:bg-white/30 text-white transition-colors"
@@ -65,7 +65,7 @@ export default function DrawingOverlay({ boardId, initialData, isDark, onClose, 
       {/* Excalidraw canvas */}
       <div className="flex-1 min-h-0">
         <Excalidraw
-          initialData={{ elements: initialElements, appState: { ...initialAppState, theme: isDark ? 'dark' : 'light', viewBackgroundColor: initialAppState.viewBackgroundColor ?? (isDark ? '#1e1e2e' : '#ffffff') } }}
+          initialData={{ elements: initialElements, appState: { ...initialAppState, theme: isDark ? 'dark' : 'light', viewBackgroundColor: 'transparent' } }}
           onChange={handleChange}
           UIOptions={{ canvasActions: { changeViewBackgroundColor: false, export: false, loadScene: false, saveToActiveFile: false, saveAsImage: false, toggleTheme: false } }}
         />
